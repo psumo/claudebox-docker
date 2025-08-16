@@ -9,6 +9,9 @@
 readonly CLAUDEBOX_VERSION="2.0.0"
 
 set -euo pipefail
+if [[ "${DEBUG-off}" != "off" ]]; then
+  set -x
+fi
 
 # Add error handler to show where script fails
 trap 'exit_code=$?; [[ $exit_code -eq 130 ]] && exit 130 || { echo "Error at line $LINENO: Command failed with exit code $exit_code" >&2; echo "Failed command: $BASH_COMMAND" >&2; echo "Call stack:" >&2; for i in ${!BASH_LINENO[@]}; do if [[ $i -gt 0 ]]; then echo "  at ${FUNCNAME[$i]} (${BASH_SOURCE[$i]}:${BASH_LINENO[$i-1]})" >&2; fi; done; }' ERR INT
@@ -574,21 +577,44 @@ build_docker_image() {
     local dockerfile="$build_context/Dockerfile"
     
     # Use the minimal project Dockerfile template
-    local base_dockerfile=$(cat "${root_dir}/build/Dockerfile.project") || error "Failed to read project Dockerfile template"
+    local base_dockerfile
+    base_dockerfile=$(tr -d '\r' < "${root_dir}/build/Dockerfile.project") || error "Failed to read project Dockerfile template"
     
     # Build labels
-    local project_folder_name=$(generate_parent_folder_name "$PROJECT_DIR")
-    local labels="
+    local project_folder_name
+    project_folder_name=$(generate_parent_folder_name "$PROJECT_DIR")
+    local labels="\
 LABEL claudebox.profiles=\"$profile_hash\"
 LABEL claudebox.profiles.crc=\"$profiles_file_hash\"
 LABEL claudebox.project=\"$project_folder_name\""
     
     # Replace placeholders in the project template
     local final_dockerfile="$base_dockerfile"
-    final_dockerfile="${final_dockerfile//\{\{PROFILE_INSTALLATIONS\}\}/$profile_installations}"
-    final_dockerfile="${final_dockerfile//\{\{LABELS\}\}/$labels}"
     
-    echo "$final_dockerfile" > "$dockerfile"
+    # Debug: show what we're replacing
+    if [[ "$VERBOSE" == "true" ]]; then
+        printf "Profile installations content: '%s'\n" "$profile_installations" >&2
+        printf "Labels content: '%s'\n" "$labels" >&2
+    fi
+
+    # Replace WHOLE lines that contain the placeholders (with optional spaces)
+    local final_dockerfile
+    final_dockerfile=$(awk -v pi="$profile_installations" -v lbs="$labels" '
+    # If the whole line is {{ PROFILE_INSTALLATIONS }}, print injected block and skip
+    /^[[:space:]]*\{\{[[:space:]]*PROFILE_INSTALLATIONS[[:space:]]*\}\}[[:space:]]*$/ { print pi; next }
+    # If the whole line is {{ LABELS }}, print labels block and skip
+    /^[[:space:]]*\{\{[[:space:]]*LABELS[[:space:]]*\}\}[[:space:]]*$/ { print lbs; next }
+    # Otherwise, print the line unchanged
+    { print }
+    ' <<<"$base_dockerfile") || error "Failed to apply Dockerfile substitutions"
+
+    # Guard: ensure no unreplaced placeholders remain
+    if grep -q '{{[[:space:]]*PROFILE_INSTALLATIONS[[:space:]]*}}' <<<"$final_dockerfile" \
+    || grep -q '{{[[:space:]]*LABELS[[:space:]]*}}' <<<"$final_dockerfile"; then
+    error "Unreplaced placeholders remain in generated Dockerfile"
+    fi
+
+    printf '%s' "$final_dockerfile" > "$dockerfile"
     
     # Build the image
     run_docker_build "$dockerfile" "$build_context"
