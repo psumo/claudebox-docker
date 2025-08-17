@@ -588,12 +588,6 @@ LABEL claudebox.project=\"$project_folder_name\""
     # Replace placeholders in the project template
     local final_dockerfile="$base_dockerfile"
     
-    # Debug: show what we're replacing
-    if [[ "$VERBOSE" == "true" ]]; then
-        printf "Profile installations content: '%s'\n" "$profile_installations" >&2
-        printf "Labels content: '%s'\n" "$labels" >&2
-    fi
-
     # Replace WHOLE lines that contain the placeholders (with optional spaces)
     local final_dockerfile
     final_dockerfile=$(awk -v pi="$profile_installations" -v lbs="$labels" '
