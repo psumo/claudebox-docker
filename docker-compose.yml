@@ -1,10 +1,10 @@
-version: '3.8'
+name: claudebox
 
 services:
   claudebox:
     build:
       context: https://github.com/RchGrav/claudebox.git#main
-      dockerfile: Dockerfile
+      dockerfile: ./Dockerfile
     image: claudebox:latest
     volumes:
       - claudebox-data:/workspace
