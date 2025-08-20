@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  claudebox:
+    build:
+      context: https://github.com/RchGrav/claudebox.git#main
+      dockerfile: Dockerfile
+    image: claudebox:latest
+    volumes:
+      - claudebox-data:/workspace
+      - claudebox-home:/home/user
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+    working_dir: /workspace
+    tty: true
+    stdin_open: true
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.claudebox.rule=Host(`claudebox.yourdomain.com`)"
+      - "traefik.http.routers.claudebox.entrypoints=websecure"
+      - "traefik.http.routers.claudebox.tls.certresolver=letsencrypt"
+      - "traefik.http.services.claudebox.loadbalancer.server.port=8080"
+    command: >
+      /bin/bash -c "
+        apt update &&
+        apt install -y curl sudo nodejs npm git &&
+        useradd -m -s /bin/bash user &&
+        echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers.d/user &&
+        su - user -c '
+          npm install -g @anthropic-ai/claude-code &&
+          npm install -g claude-flow@alpha &&
+          claude-flow init --force --hive-mind --neural-enhanced &&
+          claude-flow mcp setup --auto-permissions --87-tools &&
+          /bin/bash
+        '
+      "
+
+volumes:
+  claudebox-data:
+  claudebox-home:
+
+networks:
+  dokploy-network:
+    external: true
