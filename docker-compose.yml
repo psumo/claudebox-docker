@@ -5,6 +5,12 @@ services:
     build:
       dockerfile: ./Dockerfile
     image: claudebox:latest
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.claudebox.rule=Host(`claudebox.yourdomain.com`)"
+      - "traefik.http.routers.claudebox.entrypoints=websecure"
+      - "traefik.http.routers.claudebox.tls.certresolver=letsencrypt"
+      - "traefik.http.services.claudebox.loadbalancer.server.port=8080"
     volumes:
       - claudebox-data:/workspace
       - claudebox-home:/home/user
